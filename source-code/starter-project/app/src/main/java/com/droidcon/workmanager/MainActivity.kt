@@ -99,20 +99,23 @@ class MainActivity : ComponentActivity() {
                         is WorkerType.ListenableFutureWorker -> {
                             startImageResizerListenableFuture()
                         }
+                        is WorkerType.ChainedWork -> {
+                            startImageResizerChainedWork()
+                        }
                         is WorkerType.PeriodicWork ->  {
                             startImageResizerPeriodically()
                         }
                         is WorkerType.RetryingWork ->  {
                             startImageResizerWithRetry()
                         }
+                        is WorkerType.ConstrainedWork ->  {
+                            startImageResizerWithConstraints()
+                        }
                         is WorkerType.RxWorker ->  {
                             startImageResizerRx()
                         }
                         is WorkerType.Worker ->  {
                             startImageResizer()
-                        }
-                        is WorkerType.ChainedWork -> {
-                            startImageResizerChainedWork()
                         }
                         is WorkerType.ObservableWork -> {
                             if (isTaskCompleted) {
@@ -143,12 +146,13 @@ class MainActivity : ComponentActivity() {
             WorkerType.CoroutineWorker(),
             WorkerType.ListenableFutureWorker(),
             WorkerType.RxWorker(),
+            WorkerType.ChainedWork(),
             WorkerType.RetryingWork(),
+            WorkerType.ConstrainedWork(),
             WorkerType.PeriodicWork(),
             WorkerType.ExpeditedWork(),
             WorkerType.ForegroundWork(),
             WorkerType.ObservableWork(),
-            WorkerType.ChainedWork()
         )
 
         Column(
@@ -287,6 +291,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startImageResizerWithRetry() {
+    }
+
+    private fun startImageResizerWithConstraints() {
     }
 
     private fun startImageResizerRx() {

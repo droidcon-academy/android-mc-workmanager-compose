@@ -29,6 +29,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -122,20 +123,23 @@ class MainActivity : ComponentActivity() {
                         is WorkerType.ListenableFutureWorker -> {
                             startImageResizerListenableFuture()
                         }
+                        is WorkerType.ChainedWork -> {
+                            startImageResizerChainedWork()
+                        }
                         is WorkerType.PeriodicWork ->  {
                             startImageResizerPeriodically()
                         }
                         is WorkerType.RetryingWork ->  {
                             startImageResizerWithRetry()
                         }
+                        is WorkerType.ConstrainedWork ->  {
+                            startImageResizerWithConstraints()
+                        }
                         is WorkerType.RxWorker ->  {
                             startImageResizerRx()
                         }
                         is WorkerType.Worker ->  {
                             startImageResizer()
-                        }
-                        is WorkerType.ChainedWork -> {
-                            startImageResizerChainedWork()
                         }
                         is WorkerType.ObservableWork -> {
                             if (isTaskCompleted) {
@@ -166,12 +170,13 @@ class MainActivity : ComponentActivity() {
             WorkerType.CoroutineWorker(),
             WorkerType.ListenableFutureWorker(),
             WorkerType.RxWorker(),
+            WorkerType.ChainedWork(),
             WorkerType.RetryingWork(),
+            WorkerType.ConstrainedWork(),
             WorkerType.PeriodicWork(),
             WorkerType.ExpeditedWork(),
             WorkerType.ForegroundWork(),
             WorkerType.ObservableWork(),
-            WorkerType.ChainedWork()
         )
 
         Column(
@@ -337,7 +342,7 @@ class MainActivity : ComponentActivity() {
 
                 WorkInfo.State.SUCCEEDED -> {
                     val outputPath = workInfo.outputData.getString(
-                        ImageResizerWorkerCoroutine.KEY_RESIZED_IMAGE_PATH
+                        ImageResizerObservableWorker.KEY_RESIZED_IMAGE_PATH
                     ).toString()
 
                     val isCompleted = true
@@ -440,7 +445,7 @@ class MainActivity : ComponentActivity() {
         val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerFailingWorker>()
             .setInputData(
                 workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                    ImageResizerFailingWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
                 )
             )
             .setId(workId)
@@ -456,13 +461,37 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun startImageResizerWithConstraints() {
+        val workId = UUID.randomUUID()
+
+        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorker>()
+            .setInputData(
+                workDataOf(
+                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                )
+            )
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiresBatteryNotLow(true)
+                    .setRequiresCharging(true)
+                    .setRequiresStorageNotLow(true)
+                    .build()
+            )
+            .setId(workId)
+            .build()
+
+        workManager.enqueue(
+            imageResizeWorkRequest
+        )
+    }
+
     private fun startImageResizerRx() {
         val workId = UUID.randomUUID()
 
         val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorkerRx>()
             .setInputData(
                 workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                    ImageResizerWorkerRx.KEY_INPUT_IMAGE_PATH to R.drawable.image
                 )
             )
             .setId(workId)
