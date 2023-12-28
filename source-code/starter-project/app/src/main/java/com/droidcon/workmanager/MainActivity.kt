@@ -32,7 +32,7 @@ import coil.compose.AsyncImage
 import com.droidcon.workmanager.helper.NotificationHelper
 import com.droidcon.workmanager.helper.WorkerType
 import com.droidcon.workmanager.ui.theme.WorkManagerTheme
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,61 +86,73 @@ class MainActivity : ComponentActivity() {
                     .padding(16.dp),
                 progress = taskProgress
             ) { workerType ->
-                    when(workerType) {
-                        is WorkerType.CoroutineWorker -> {
-                            startImageResizerCoroutine()
-                        }
-                        is WorkerType.ExpeditedWork -> {
-                            startImageResizerExpedited()
-                        }
-                        is WorkerType.ForegroundWork -> {
-                            startImageResizerForeground()
-                        }
-                        is WorkerType.ListenableFutureWorker -> {
-                            startImageResizerListenableFuture()
-                        }
-                        is WorkerType.ChainedWork -> {
-                            startImageResizerChainedWork()
-                        }
-                        is WorkerType.PeriodicWork ->  {
-                            startImageResizerPeriodically()
-                        }
-                        is WorkerType.RetryingWork ->  {
-                            startImageResizerWithRetry()
-                        }
-                        is WorkerType.ConstrainedWork ->  {
-                            startImageResizerWithConstraints()
-                        }
-                        is WorkerType.RxWorker ->  {
-                            startImageResizerRx()
-                        }
-                        is WorkerType.Worker ->  {
-                            startImageResizer()
-                        }
-                        is WorkerType.ObservableWork -> {
-                            if (isTaskCompleted) {
-                                return@ImageResizer
-                            }
-
-                            coroutineScope.launch {
-                                startImageResizerObservable({ progress ->
-                                    taskProgress = progress
-                                }) { path, isCompleted ->
-                                    if (isCompleted && !path.isNullOrBlank()) {
-                                        outputPath = path
-                                    }
-
-                                    isTaskCompleted = isCompleted
-                                }
-                            }
-                        }
+                when (workerType) {
+                    is WorkerType.Worker -> {
+                        startImageResizer()
                     }
+
+                    is WorkerType.CoroutineWorker -> {
+                        startImageResizerCoroutine()
+                    }
+
+                    is WorkerType.ListenableFutureWorker -> {
+                        startImageResizerListenableFuture()
+                    }
+
+                    is WorkerType.RxWorker -> {
+                        startImageResizerRx()
+                    }
+
+                    is WorkerType.ChainedWork -> {
+                        startImageResizerChainedWork()
+                    }
+
+                    is WorkerType.RetryingWork -> {
+                        startImageResizerWithRetry()
+                    }
+
+                    is WorkerType.ConstrainedWork -> {
+                        startImageResizerWithConstraints()
+                    }
+
+                    is WorkerType.PeriodicWork -> {
+                        startImageResizerPeriodically()
+                    }
+
+                    is WorkerType.ExpeditedWork -> {
+                        startImageResizerExpedited()
+                    }
+
+                    is WorkerType.ForegroundWork -> {
+                        startImageResizerForeground()
+                    }
+
+                    is WorkerType.ObservableWork -> {
+                        if (isTaskCompleted) {
+                            return@ImageResizer
+                        }
+
+                        startImageResizerObservable(coroutineScope, { progress ->
+                            taskProgress = progress
+                        }, { path, isCompleted ->
+                            if (isCompleted && !path.isNullOrBlank()) {
+                                outputPath = path
+                            }
+
+                            isTaskCompleted = isCompleted
+                        })
+                    }
+                }
             }
         }
     }
 
     @Composable
-    fun ImageResizer(modifier: Modifier = Modifier, progress: Float, onResizeClick: (workerType: WorkerType) -> Unit) {
+    fun ImageResizer(
+        modifier: Modifier = Modifier,
+        progress: Float,
+        onResizeClick: (workerType: WorkerType) -> Unit
+    ) {
         val workerTypesList = listOf(
             WorkerType.Worker(),
             WorkerType.CoroutineWorker(),
@@ -272,13 +284,22 @@ class MainActivity : ComponentActivity() {
     private fun startImageResizer() {
     }
 
-    private suspend fun startImageResizerObservable(
-        onProgressUpdated: (Float) -> Unit,
-        onStatusChange: (String?, Boolean) -> Unit
-    ) {
+    private fun startImageResizerCoroutine() {
+    }
+
+    private fun startImageResizerListenableFuture() {
+    }
+
+    private fun startImageResizerRx() {
     }
 
     private fun startImageResizerChainedWork() {
+    }
+
+    private fun startImageResizerWithRetry() {
+    }
+
+    private fun startImageResizerWithConstraints() {
     }
 
     private fun startImageResizerPeriodically() {
@@ -290,18 +311,10 @@ class MainActivity : ComponentActivity() {
     private fun startImageResizerForeground() {
     }
 
-    private fun startImageResizerWithRetry() {
-    }
-
-    private fun startImageResizerWithConstraints() {
-    }
-
-    private fun startImageResizerRx() {
-    }
-
-    private fun startImageResizerListenableFuture() {
-    }
-
-    private fun startImageResizerCoroutine() {
+    private fun startImageResizerObservable(
+        coroutineScope: CoroutineScope,
+        onProgressUpdated: (Float) -> Unit,
+        onStatusChange: (String?, Boolean) -> Unit
+    ) {
     }
 }
