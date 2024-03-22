@@ -4,38 +4,28 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.droidcon.workmanager.helper.AppConstants
 import com.droidcon.workmanager.helper.ImageResizeHelper
 import com.droidcon.workmanager.helper.NotificationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class ImageResizerWorkerCoroutine(context: Context, workerParams: WorkerParameters) :
+class ImageResizerCoroutineWorker(context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result {
         return withContext(Dispatchers.IO) {
-            val inputImageId = inputData.getInt(KEY_INPUT_IMAGE_PATH, -1)
-
-            if (inputImageId == -1) return@withContext Result.failure()
+            val inputImageId = inputData.getInt(AppConstants.IMAGE_ID, -1)
 
             val resizedImagePath = ImageResizeHelper.resizeBitmap(
-                applicationContext, inputImageId, 100, 100
+                applicationContext, inputImageId, 500, 500
             )
 
             NotificationHelper.createNotification(
                 applicationContext,
-                "Image saved at: $resizedImagePath"
+                "Image resized at: $resizedImagePath"
             )
 
-            return@withContext Result.success(
-                workDataOf(
-                    KEY_RESIZED_IMAGE_PATH to resizedImagePath
-                )
-            )
+            Result.success()
         }
-    }
-
-    companion object {
-        const val KEY_INPUT_IMAGE_PATH = "KEY_INPUT_IMAGE_PATH"
-        const val KEY_RESIZED_IMAGE_PATH = "KEY_RESIZED_IMAGE_PATH"
     }
 }

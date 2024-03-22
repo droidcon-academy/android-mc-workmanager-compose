@@ -119,6 +119,10 @@ class MainActivity : ComponentActivity() {
                         startImageResizerPeriodically()
                     }
 
+                    is WorkerType.CancelWork -> {
+                        cancelImageResizerWorker()
+                    }
+
                     is WorkerType.ExpeditedWork -> {
                         startImageResizerExpedited()
                     }
@@ -132,15 +136,9 @@ class MainActivity : ComponentActivity() {
                             return@ImageResizer
                         }
 
-                        startImageResizerObservable(coroutineScope, { progress ->
+                        startImageResizerObservable(coroutineScope) { progress ->
                             taskProgress = progress
-                        }, { path, isCompleted ->
-                            if (isCompleted && !path.isNullOrBlank()) {
-                                outputPath = path
-                            }
-
-                            isTaskCompleted = isCompleted
-                        })
+                        }
                     }
                 }
             }
@@ -162,6 +160,7 @@ class MainActivity : ComponentActivity() {
             WorkerType.RetryingWork(),
             WorkerType.ConstrainedWork(),
             WorkerType.PeriodicWork(),
+            WorkerType.CancelWork(),
             WorkerType.ExpeditedWork(),
             WorkerType.ForegroundWork(),
             WorkerType.ObservableWork(),
@@ -305,6 +304,9 @@ class MainActivity : ComponentActivity() {
     private fun startImageResizerPeriodically() {
     }
 
+    private fun cancelImageResizerWorker() {
+    }
+
     private fun startImageResizerExpedited() {
     }
 
@@ -313,8 +315,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startImageResizerObservable(
         coroutineScope: CoroutineScope,
-        onProgressUpdated: (Float) -> Unit,
-        onStatusChange: (String?, Boolean) -> Unit
+        onProgressUpdated: (Float) -> Unit
     ) {
     }
 }

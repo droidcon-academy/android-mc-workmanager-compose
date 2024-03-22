@@ -1,55 +1,38 @@
 package com.droidcon.workmanager.worker
 
 import android.content.Context
-import androidx.work.CoroutineWorker
+import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.droidcon.workmanager.helper.AppConstants
 import com.droidcon.workmanager.helper.ImageResizeHelper
 import com.droidcon.workmanager.helper.NotificationHelper
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 
 class ImageResizerObservableWorker(context: Context, workerParams: WorkerParameters) :
-    CoroutineWorker(context, workerParams) {
-    override suspend fun doWork(): Result {
-        return withContext(Dispatchers.IO) {
-            val inputImageId = inputData.getInt(KEY_INPUT_IMAGE_PATH, -1)
+    Worker(context, workerParams) {
 
-            if (inputImageId == -1) return@withContext Result.failure()
+    override fun doWork(): Result {
+        val imageId = inputData.getInt(AppConstants.IMAGE_ID, -1)
 
-            val resizedImagePath = ImageResizeHelper.resizeBitmap(
-                applicationContext, inputImageId, 100, 100
-            )
+        val resizedImagePath = ImageResizeHelper.resizeBitmap(applicationContext, imageId, 500, 500)
 
-            (0..100 step 10).forEach {
-                if (isStopped) return@forEach
+        (0..100 step 10).forEach {
+            Thread.sleep(1000)
 
-                delay(1000)
-
-                setProgressAsync(
-                    workDataOf(
-                        KEY_RESIZE_PROGRESS to it.toFloat()
-                    )
-                )
-            }
-
-            NotificationHelper.createNotification(
-                applicationContext,
-                "Image saved at: $resizedImagePath"
-            )
-
-            return@withContext Result.success(
+            setProgressAsync(
                 workDataOf(
-                    KEY_RESIZED_IMAGE_PATH to resizedImagePath
+                    AppConstants.IMAGE_RESIZER_PROGRESS to it.toFloat()
                 )
             )
         }
-    }
 
-    companion object {
-        const val KEY_INPUT_IMAGE_PATH = "KEY_INPUT_IMAGE_PATH"
-        const val KEY_RESIZED_IMAGE_PATH = "KEY_RESIZED_IMAGE_PATH"
-        const val KEY_RESIZE_PROGRESS = "KEY_RESIZE_PROGRESS"
+        NotificationHelper.createNotification(
+            applicationContext,
+            text = "Image resized at :$resizedImagePath"
+        )
+
+        return Result.success(
+            workDataOf(AppConstants.IMAGE_PATH to resizedImagePath)
+        )
     }
 }

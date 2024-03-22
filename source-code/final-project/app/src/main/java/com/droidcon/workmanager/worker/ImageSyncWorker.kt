@@ -1,32 +1,23 @@
 package com.droidcon.workmanager.worker
 
 import android.content.Context
-import androidx.concurrent.futures.CallbackToFutureAdapter
-import androidx.work.ListenableWorker
+import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.droidcon.workmanager.helper.AppConstants
 import com.droidcon.workmanager.helper.ImageResizeHelper
 import com.droidcon.workmanager.helper.NotificationHelper
-import com.google.common.util.concurrent.ListenableFuture
 
-class ImageSyncWorker(appContext: Context, params: WorkerParameters) :
-    ListenableWorker(appContext, params) {
-    override fun startWork(): ListenableFuture<Result> {
-        return CallbackToFutureAdapter.getFuture {
-            val imagePath =
-                inputData.getString(ImageResizerWorkerCoroutine.KEY_RESIZED_IMAGE_PATH) ?: ""
+class ImageSyncWorker(context: Context, workerParams: WorkerParameters) :
+    Worker(context, workerParams) {
+    override fun doWork(): Result {
+        val imagePath = inputData.getString(AppConstants.IMAGE_PATH) ?: ""
+        ImageResizeHelper.scanFile(applicationContext, imagePath, { _, _ -> })
 
-            imagePath.ifEmpty {
-                it.set(Result.failure())
-            }
+        NotificationHelper.createNotification(
+            applicationContext,
+            "Image sync with Gallery"
+        )
 
-            ImageResizeHelper.scanFile(applicationContext, imagePath) { path, uri ->
-                NotificationHelper.createNotification(
-                    applicationContext,
-                    "Image synced with Gallery"
-                )
-
-                it.set(Result.success())
-            }
-        }
+        return Result.success()
     }
 }

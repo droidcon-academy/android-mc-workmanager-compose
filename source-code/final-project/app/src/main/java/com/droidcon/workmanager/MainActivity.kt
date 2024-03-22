@@ -1,6 +1,8 @@
 package com.droidcon.workmanager
 
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -30,6 +32,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -37,16 +42,17 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import coil.compose.AsyncImage
+import com.droidcon.workmanager.helper.AppConstants
 import com.droidcon.workmanager.helper.NotificationHelper
 import com.droidcon.workmanager.helper.WorkerType
 import com.droidcon.workmanager.ui.theme.WorkManagerTheme
+import com.droidcon.workmanager.worker.ImageResizerCoroutineWorker
 import com.droidcon.workmanager.worker.ImageResizerFailingWorker
 import com.droidcon.workmanager.worker.ImageResizerForegroundWorker
-import com.droidcon.workmanager.worker.ImageResizerListenableFuture
+import com.droidcon.workmanager.worker.ImageResizerListenableFutureWorker
 import com.droidcon.workmanager.worker.ImageResizerObservableWorker
+import com.droidcon.workmanager.worker.ImageResizerRxWorker
 import com.droidcon.workmanager.worker.ImageResizerWorker
-import com.droidcon.workmanager.worker.ImageResizerWorkerCoroutine
-import com.droidcon.workmanager.worker.ImageResizerWorkerRx
 import com.droidcon.workmanager.worker.ImageSyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
@@ -56,9 +62,13 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
+
     private val workManager by lazy {
-        WorkManager.getInstance(applicationContext)
+        WorkManager.getInstance(this)
     }
+
+    private var workId: UUID? = null
+    private var workerTag: String = "ImageResizerWorkerTag"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -111,69 +121,71 @@ class MainActivity : ComponentActivity() {
                     .padding(16.dp),
                 progress = taskProgress
             ) { workerType ->
-                    when(workerType) {
-                        is WorkerType.Worker -> {
-                            startImageResizer()
+                when (workerType) {
+                    is WorkerType.Worker -> {
+                        startImageResizer()
+                    }
+
+                    is WorkerType.CoroutineWorker -> {
+                        startImageResizerCoroutine()
+                    }
+
+                    is WorkerType.ListenableFutureWorker -> {
+                        startImageResizerListenableFuture()
+                    }
+
+                    is WorkerType.RxWorker -> {
+                        startImageResizerRx()
+                    }
+
+                    is WorkerType.ChainedWork -> {
+                        startImageResizerChainedWork()
+                    }
+
+                    is WorkerType.RetryingWork -> {
+                        startImageResizerWithRetry()
+                    }
+
+                    is WorkerType.ConstrainedWork -> {
+                        startImageResizerWithConstraints()
+                    }
+
+                    is WorkerType.PeriodicWork -> {
+                        startImageResizerPeriodically()
+                    }
+
+                    is WorkerType.CancelWork -> {
+                        cancelImageResizerWorker()
+                    }
+
+                    is WorkerType.ExpeditedWork -> {
+                        startImageResizerExpedited()
+                    }
+
+                    is WorkerType.ForegroundWork -> {
+                        startImageResizerForeground()
+                    }
+
+                    is WorkerType.ObservableWork -> {
+                        if (isTaskCompleted) {
+                            return@ImageResizer
                         }
 
-                        is WorkerType.CoroutineWorker -> {
-                            startImageResizerCoroutine()
-                        }
-
-                        is WorkerType.ListenableFutureWorker -> {
-                            startImageResizerListenableFuture()
-                        }
-
-                        is WorkerType.RxWorker -> {
-                            startImageResizerRx()
-                        }
-
-                        is WorkerType.ChainedWork -> {
-                            startImageResizerChainedWork()
-                        }
-
-                        is WorkerType.RetryingWork -> {
-                            startImageResizerWithRetry()
-                        }
-
-                        is WorkerType.ConstrainedWork -> {
-                            startImageResizerWithConstraints()
-                        }
-
-                        is WorkerType.PeriodicWork -> {
-                            startImageResizerPeriodically()
-                        }
-
-                        is WorkerType.ExpeditedWork -> {
-                            startImageResizerExpedited()
-                        }
-
-                        is WorkerType.ForegroundWork -> {
-                            startImageResizerForeground()
-                        }
-
-                        is WorkerType.ObservableWork -> {
-                            if (isTaskCompleted) {
-                                return@ImageResizer
-                            }
-
-                            startImageResizerObservable(coroutineScope, { progress ->
-                                taskProgress = progress
-                            }, { path, isCompleted ->
-                                if (isCompleted && !path.isNullOrBlank()) {
-                                    outputPath = path
-                                }
-
-                                isTaskCompleted = isCompleted
-                            })
+                        startImageResizerObservable(coroutineScope) { progress ->
+                            taskProgress = progress
                         }
                     }
+                }
             }
         }
     }
 
     @Composable
-    fun ImageResizer(modifier: Modifier = Modifier, progress: Float, onResizeClick: (workerType: WorkerType) -> Unit) {
+    fun ImageResizer(
+        modifier: Modifier = Modifier,
+        progress: Float,
+        onResizeClick: (workerType: WorkerType) -> Unit
+    ) {
         val workerTypesList = listOf(
             WorkerType.Worker(),
             WorkerType.CoroutineWorker(),
@@ -183,6 +195,7 @@ class MainActivity : ComponentActivity() {
             WorkerType.RetryingWork(),
             WorkerType.ConstrainedWork(),
             WorkerType.PeriodicWork(),
+            WorkerType.CancelWork(),
             WorkerType.ExpeditedWork(),
             WorkerType.ForegroundWork(),
             WorkerType.ObservableWork(),
@@ -303,246 +316,202 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startImageResizer() {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorker>()
+        workId = UUID.randomUUID()
+        val imageResizerWorkerRequest = OneTimeWorkRequestBuilder<ImageResizerWorker>()
             .setInputData(
                 workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                    AppConstants.IMAGE_ID to R.drawable.image
                 )
-            )
-            .setId(workId)
-            .build()
+            ).setId(workId!!).build()
 
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerCoroutine() {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorkerCoroutine>()
+        val imageResizerWorkerRequest = OneTimeWorkRequestBuilder<ImageResizerCoroutineWorker>()
             .setInputData(
                 workDataOf(
-                    ImageResizerWorkerCoroutine.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                    AppConstants.IMAGE_ID to R.drawable.image
                 )
-            )
-            .setId(workId)
-            .build()
+            ).build()
 
-        workManager.enqueue(
-            imageResizeWorkRequest
+        workManager.enqueueUniqueWork(
+            "ImageResizerWorker",
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            imageResizerWorkerRequest
         )
     }
 
     private fun startImageResizerListenableFuture() {
-        val workId = UUID.randomUUID()
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerListenableFutureWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
+                ).build()
 
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerListenableFuture>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerListenableFuture.KEY_INPUT_IMAGE_PATH to R.drawable.image
-                )
-            )
-            .setId(workId)
-            .build()
-
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerRx() {
-        val workId = UUID.randomUUID()
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerRxWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
+                ).build()
 
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorkerRx>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
-                )
-            )
-            .setId(workId)
-            .build()
-
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerChainedWork() {
-        val workId = UUID.randomUUID()
-        val syncWorkId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorkerCoroutine>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerWorkerCoroutine.KEY_INPUT_IMAGE_PATH to R.drawable.image
-                )
-            )
-            .setId(workId)
-            .build()
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
+                ).addTag(workerTag).build()
 
         val imageSyncWorkRequest = OneTimeWorkRequestBuilder<ImageSyncWorker>()
-            .setId(syncWorkId)
-            .build()
+            .addTag(workerTag).build()
 
-        workManager.beginWith(
-            imageResizeWorkRequest
-        ).then(imageSyncWorkRequest)
+        workManager.beginWith(imageResizerWorkerRequest)
+            .then(imageSyncWorkRequest)
             .enqueue()
     }
 
     private fun startImageResizerWithRetry() {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerFailingWorker>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerFailingWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerFailingWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
+                ).setBackoffCriteria(
+                    BackoffPolicy.LINEAR,
+                    2,
+                    TimeUnit.SECONDS
                 )
-            )
-            .setId(workId)
-            .setBackoffCriteria(
-                BackoffPolicy.LINEAR,
-                2,
-                TimeUnit.SECONDS
-            )
-            .build()
+                .build()
 
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerWithConstraints() {
-        val workId = UUID.randomUUID()
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
+                ).setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .setRequiresCharging(true)
+                        .apply {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                setRequiresDeviceIdle(false)
+                            }
+                        }
+                        .setRequiresBatteryNotLow(true)
+                        .setRequiresStorageNotLow(true)
+                        .build()
+                ).build()
 
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorker>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
-                )
-            )
-            .setId(workId)
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiresBatteryNotLow(true)
-                    .setRequiresCharging(true)
-                    .setRequiresStorageNotLow(true)
-                    .build()
-            )
-            .build()
-
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerPeriodically() {
-        val workId = UUID.randomUUID()
+        workId = UUID.randomUUID()
+        val imageResizerWorkerRequest =
+            PeriodicWorkRequestBuilder<ImageResizerWorker>(
+                15, TimeUnit.MINUTES
+            ).setInputData(
+                workDataOf(
+                    AppConstants.IMAGE_ID to R.drawable.image
+                )
+            ).setId(workId!!).build()
 
-        val imageResizeWorkRequest = PeriodicWorkRequestBuilder<ImageResizerWorker>(
-            repeatInterval = 20,
-            repeatIntervalTimeUnit = TimeUnit.MINUTES,
-            flexTimeInterval = 5,
-            flexTimeIntervalUnit = TimeUnit.MINUTES
-        ).setInputData(
-            workDataOf(
-                ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
-            )
-        ).setId(workId)
-            .build()
+        workManager.enqueue(imageResizerWorkerRequest)
+    }
 
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+    private fun cancelImageResizerWorker() {
+        workManager.cancelWorkById(workId!!)
+        // workManager.cancelUniqueWork("ImageResizerWorker")
+        // workManager.cancelAllWorkByTag(workerTag)
+        // workManager.cancelAllWork()
     }
 
     private fun startImageResizerExpedited() {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerWorker>()
-            .setInputData(
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerWorker>().setInputData(
                 workDataOf(
-                    ImageResizerWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+                    AppConstants.IMAGE_ID to R.drawable.image
                 )
-            ).setExpedited(OutOfQuotaPolicy.DROP_WORK_REQUEST)
-            .setId(workId)
-            .build()
+            )
+                .setExpedited(OutOfQuotaPolicy.DROP_WORK_REQUEST)
+                .build()
 
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerForeground() {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerForegroundWorker>()
-            .setInputData(
+        val imageResizerWorkerRequest =
+            OneTimeWorkRequestBuilder<ImageResizerForegroundWorker>().setInputData(
                 workDataOf(
-                    ImageResizerForegroundWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image,
+                    AppConstants.IMAGE_ID to R.drawable.image
                 )
             )
-            .setId(workId)
-            .build()
+                .setExpedited(OutOfQuotaPolicy.DROP_WORK_REQUEST)
+                .build()
 
-        workManager.enqueue(
-            imageResizeWorkRequest
-        )
+        workManager.enqueue(imageResizerWorkerRequest)
     }
 
     private fun startImageResizerObservable(
         coroutineScope: CoroutineScope,
-        onProgressUpdated: (Float) -> Unit,
-        onStatusChange: (String?, Boolean) -> Unit
+        onProgressUpdated: (Float) -> Unit
     ) {
-        val workId = UUID.randomUUID()
-
-        val imageResizeWorkRequest = OneTimeWorkRequestBuilder<ImageResizerObservableWorker>()
-            .setInputData(
-                workDataOf(
-                    ImageResizerObservableWorker.KEY_INPUT_IMAGE_PATH to R.drawable.image
+        workId = UUID.randomUUID()
+        val imageResizeWorkRequest =
+            OneTimeWorkRequestBuilder<ImageResizerObservableWorker>()
+                .setInputData(
+                    workDataOf(
+                        AppConstants.IMAGE_ID to R.drawable.image
+                    )
                 )
-            )
-            .setId(workId)
-            .build()
+                .setId(workId!!)
+                .build()
 
         workManager.enqueue(
             imageResizeWorkRequest
         )
 
         coroutineScope.launch {
-            workManager.getWorkInfoByIdFlow(workId).onEach { workInfo ->
+            workManager.getWorkInfoByIdFlow(workId!!).onEach { workInfo ->
                 when (workInfo?.state) {
+                    WorkInfo.State.ENQUEUED -> {}
                     WorkInfo.State.RUNNING -> {
-                        val progress = workInfo.progress.getFloat(
-                            ImageResizerObservableWorker.KEY_RESIZE_PROGRESS,
-                            0f
+                        val progress = workInfo?.progress?.getFloat(
+                            AppConstants.IMAGE_RESIZER_PROGRESS, 0f
                         )
-
-                        onProgressUpdated(progress)
+                        onProgressUpdated(progress ?: 0f)
                     }
 
                     WorkInfo.State.SUCCEEDED -> {
-                        val outputPath = workInfo.outputData.getString(
-                            ImageResizerWorkerCoroutine.KEY_RESIZED_IMAGE_PATH
-                        ).toString()
-
-                        val isCompleted = true
-
-                        onStatusChange(
-                            outputPath,
-                            isCompleted
-                        )
+                        onProgressUpdated(100f)
+                        val outputData = workInfo?.outputData?.getString(AppConstants.IMAGE_PATH)
+                        Log.d("WORK_INFO", "Output Data: ${outputData}")
                     }
-
-                    WorkInfo.State.CANCELLED -> {
+                    WorkInfo.State.FAILED -> {
                         onProgressUpdated(0f)
                     }
-
-                    else -> {}
+                    WorkInfo.State.BLOCKED -> {}
+                    WorkInfo.State.CANCELLED -> {}
+                    null -> {}
                 }
             }.collect()
         }
